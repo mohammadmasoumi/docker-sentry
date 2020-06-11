@@ -1,0 +1,147 @@
+version: '3.4'
+
+networks:
+  web_net:
+    external: true
+  local_net:
+    external: true
+
+volumes:
+  traefik-acme:
+    name: traefik-acme 
+  common-data:
+    name: common-data
+  sentry-data:
+    name: sentry-data
+
+services:
+  traefik:
+    image: traefik:latest
+    restart: always
+    container_name: traefik
+    command:
+    - --log.level=INFO
+    - --log.filepath=/log-file.log
+    - --log.format=json
+    - --api=true
+    - --ping=true
+    - --accesslog=true
+    - --accesslog.bufferingsize=100
+    - --api.insecure=true
+    - --providers.docker.endpoint=unix:///var/run/docker.sock
+    - --providers.docker.exposedbydefault=false
+    - --providers.docker.network=web_net
+    - --entrypoints.http.address=:80
+    - --entrypoints.https.address=:443
+    - --metrics.prometheus=true
+    - --entryPoints.metrics.address=:8082
+    - --metrics.prometheus.entryPoint=metrics
+    - --certificatesresolvers.mycert.acme.email=EXAMPLE@GMAIL.COM
+    - --certificatesresolvers.mycert.acme.storage=/acme/acme.json
+    - --certificatesresolvers.mycert.acme.tlschallenge=true
+    ports:
+    - "80:80"
+    - "443:443"
+    volumes:
+    - /etc/localtime:/etc/localtime:ro
+    - /var/run/docker.sock:/var/run/docker.sock:ro
+    - traefik-acme:/acme 
+    networks:
+    - web_net
+  sentry-redis:
+    networks:
+    - local_net
+    volumes:
+    - common-data:/common/data
+    image: redis
+  sentry-postgres:
+    networks:
+    - local_net
+    volumes:
+    - common-data:/common/data
+    - sentry-data:/var/lib/postgresql/data
+    image: postgres
+    environment:
+      POSTGRES_USER: sentry
+      POSTGRES_PASSWORD: sentry
+      POSTGRES_DB: sentry
+  sentry:
+    networks:
+    - local_net
+    - web_net
+    volumes:
+    - common-data:/common/data
+    image: sentry:9.1.2
+    depends_on:
+    - sentry-redis
+    - sentry-postgres
+    environment:
+      SENTRY_SECRET_KEY: THIS_IS_A_SECRECT_PASSWORD
+      SENTRY_POSTGRES_HOST: sentry-postgres
+      SENTRY_DB_USER: sentry
+      SENTRY_DB_PASSWORD: sentry
+      SENTRY_REDIS_HOST: sentry-redis
+      SENTRY_EMAIL_PORT: 587
+      SENTRY_EMAIL_PASSWORD: THIS_IS_A_SECRECT_PASSWORD
+      SENTRY_SERVER_EMAIL: EXAMPLE@GOOGLE.COM
+      SENTRY_EMAIL_USE_TLS: 'true'
+      SENTRY_EMAIL_USER: EXAMPLE@GOOGLE.COM
+      SENTRY_EMAIL_HOST: smtp.yandex.com
+    labels:
+    - traefik.enable=true
+    - traefik.docker.network=web_net
+    - traefik.http.routers.sentry.entrypoints=http
+    - traefik.http.routers.sentry.rule=Host(`MY.DOMAIN.CO`)
+    - traefik.http.routers.sentry.middlewares=https-redirect
+    - traefik.http.middlewares.https-redirect.redirectscheme.scheme=https
+    - traefik.http.routers.sentry-secure.entrypoints=https
+    - traefik.http.routers.sentry-secure.rule=Host(`MY.DOMAIN.CO`)
+    - traefik.http.routers.sentry-secure.tls=true
+    - traefik.http.routers.sentry-secure.tls.certresolver=mycert
+    - traefik.http.services.sentry.loadbalancer.server.port=9000
+  sentry-cron:
+    networks:
+    - local_net
+    volumes:
+    - common-data:/common/data
+    image: sentry:9.1.2
+    depends_on:
+    - sentry-redis
+    - sentry-postgres
+    environment:
+      SENTRY_SECRET_KEY: THIS_IS_A_SECRECT_PASSWORD
+      SENTRY_POSTGRES_HOST: sentry-postgres
+      SENTRY_DB_USER: sentry
+      SENTRY_DB_PASSWORD: sentry
+      SENTRY_REDIS_HOST: sentry-redis
+      SENTRY_EMAIL_PORT: 587
+      SENTRY_EMAIL_PASSWORD: THIS_IS_A_SECRECT_PASSWORD
+      SENTRY_SERVER_EMAIL: EXAMPLE@GOOGLE.COM
+      SENTRY_EMAIL_USE_TLS: 'true'
+      SENTRY_EMAIL_USER: EXAMPLE@GOOGLE.COM
+      SENTRY_EMAIL_HOST: smtp.yandex.com
+    command: sentry run cron
+  sentry-worker:
+    networks:
+    - local_net
+    volumes:
+    - common-data:/common/data
+    image: sentry:9.1.2
+    depends_on:
+    - sentry-redis
+    - sentry-postgres
+    environment:
+      SENTRY_SECRET_KEY: THIS_IS_A_SECRECT_PASSWORD
+      SENTRY_POSTGRES_HOST: sentry-postgres
+      SENTRY_DB_USER: sentry
+      SENTRY_DB_PASSWORD: sentry
+      SENTRY_REDIS_HOST: sentry-redis
+      SENTRY_EMAIL_PORT: 587
+      SENTRY_EMAIL_PASSWORD: THIS_IS_A_SECRECT_PASSWORD
+      SENTRY_SERVER_EMAIL: EXAMPLE@GOOGLE.COM
+      SENTRY_EMAIL_USE_TLS: 'true'
+      SENTRY_EMAIL_USER: EXAMPLE@GOOGLE.COM
+      SENTRY_EMAIL_HOST: smtp.yandex.com
+    command: sentry run worker
+
+
