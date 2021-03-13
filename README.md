@@ -1,6 +1,9 @@
+# docker sentry
+
+self-hosted sentry with docker file and **data migration**
 
 
-## Reset postgres auth increment after importing data
+### Reset postgres auth increment after importing data
 
 ```
 export USER="sentry"
